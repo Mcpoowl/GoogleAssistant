@@ -8,7 +8,6 @@ This module works with the Actions for Google V2 API. It is based on the old Goo
 * What can I do with it?
 * What setup do I need to do?
 * How does it work?
-* How do I identify the Mendix user?
 
 ### Pre-requisites
 
