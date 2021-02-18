@@ -1,75 +1,76 @@
 # Google Assistant Module for Mendix
 
-This module works with the Actions for Google V2 API. It is based on the old Google Assistant module by Conner Charlebois, and was updated by Paul Ketelaars at TimeSeries
+This module will help you get started implementing Google Assistant in your Mendix project. It can be quite a handful if you're doing this for the first time, but in essence, it's not that difficult. Feel free to send me a message if you can't figure it out though!
 
 
-* Pre-requisites
-* Why should I use this?
-* What can I do with it?
-* What setup do I need to do?
-* How does it work?
+### Typical Usage scenario
 
-### Pre-requisites
+Typing can get quite boring, so why not talk instead?
 
-To use this module, you'll need to have some level of familiarity with Google's Dialogflow tool. This is the tool that allows you to design conversational interfaces for the Google Assistant, and other voice-enabled devices. To learn more about Dialogflow, [start here](https://dialogflow.com/).
+### Features and limitations
 
-### Why should I use this?
+Current features
 
-If you want to enable your users to interact with your application through a google-assistant enabled device like a Google Home device, the Pixel Buds, or the Google Assistant on their phone.
+* Text to speech responses
+* Basic card responses
+* Carousel responses
+* Table response
+* Account linking with JWT tokens
 
-### What can I do with it?
+Google JSON is very specific, so you'll probably need to adjust the JSON snippets and mappings to suit your need
 
-This module connects your Mendix application as the Fulfillment service for your Dialogflow application. In other words, your app will receive the name of the **intent** from the Dialogflow app as well as any relevant **parameters**. Your app will run a microflow to process any logic and then return a string of text for the Assistant to speak back to the user, which means that anything you can do from a Mendix microflow, you can expose to the Assistant.
+NB: Your app needs to run on cloud v4!
 
-### What setup do I need to do?
+### Configuration
 
-You need to have (or create) a Dialogflow application (called an **agent**) to serve as the interfact between your Mendix app and the Assistant. Once you install the module, you'll need to do to following one-time setup
+Using the module isn't that difficult. The hard part is setting up Dialogflow and Actions on Google. Ready? Here we go!
 
-1. Create a user and give the user the **GA_Agent** module role
-2. Add a **GAUserId** attribute to your **Account** entity. Even if you won't use it.
-3. Add **ASU_SetupActionRegistry** to your after-startup-microflow. Add one for each intent you want webhooked to your Mendix App.
-4. Ensure that the **GA_Fulfillment** REST Service is accessible to the user you created in step 1.
-5. In your **Dialogflow agent**, set the Fulfillment URL to the REST service from 4.
-Make sure it ends with the /webhook operation!
-6. You're done!
+1. Create a new Dialogflow Project
+2. Create your intents
+3. Import the module in your application, create the GAUserId attribute on your Account entity and set the correct role for the GoogleAgent Module role. Make note of the REST URL in the published REST service
+4. Go back to Dialogflow, and enter the correct information in the ‘fullfillment’ tab of your project. This will make sure that any intent that is set to use fulfillment, will call your REST service
+5. For every intent that you want to call your Mendix app, in your Afterstartup, call the AddActionToRegistry Java action, and add the IntentName (String match, so case sensitive) and the microflow you want to execute (always duplicate the Action_Template microflow, and build your logic there)
+6. In Dialogflow, click the integration tab, and add Google Assistant, also check the ‘Auto-preview changes’ slider
+7. Create a simple intent in dialogflow, select the ‘use fulfillment for this reponse’ and create the response in Mendix, and test! You can always look at the ‘Action_Fulfill’ microflow to get a feel on how to create responses.
+ 
+New in this version is the addition of JWT tokens: we now have to enable Account Linking if we want to have user specific information.
 
-### How does it work?
+To do this, you need to add Account Linking to your Actions on Google Project, and copy the ClientID you get when setting this up. Add this to the GoogleAccountClientID constant.
 
-The high-level flow of a Dialogflow app is as follows: A user makes a **Request** (spoken words interpreted to text) to an **Agent**. The agent then determines the **Intent** of the request (a system-name for what the user is actually trying *to do*). Once the intent is known, the agent tries to fulfill the request. For simple requests, this fulfillment can be done through simple business rules "coded" into the agent itself on Dialogflow. For more complex requests, the agent can leverage a **Fulfillment** service to process the request. The Fulfillment service is a webhook that receives the "parameterized" request and then returns some content to be passed back to the agent and ultimately the user. In this implementation, the Fulfillment service passes the intent name and a generic `GoogleAssistant.Parameters` object with the parameters from the request into a Mendix microflow called `FulfillAction`. This microflow looks in the **Registry** (a mapping of intent names and microflows that is created in the **ASU** microflow) to find the correct action microflow to run. It then runs that microflow. Each action microflow takes an `Account` and `Parameters` object as parameters, and returns an `HttpResponse` object to pass back to the agent.
+You should also make a new intent with the following JSON as a custom payload response:
 
-To add a new action to your application, follow these steps:
+```json 
+{
+  "google": {
+    "expectUserResponse": true,
+    "systemIntent": {
+      "intent": "actions.intent.SIGN_IN",
+      "data": {
+        "@type": "type.googleapis.com/google.actions.v2.SignInValueSpec"
+      }
+    }
+  }
+}
+```
 
-1. From the [Dialogflow console](https://console.dialogflow.com), create a new Intent
-2. Enter training phrases and annotate them to add parameters, configure the parameters
-3. Name the action in UpperCamelCase, for example: CreateRequest
-4. Enable the webhook call as the intent's fulfillment
-5. Save the intent
-6. Return to the Mendix Modeler
-7. If your action requires parameters, add those parameters to the JSON structure/Mapping as follows:
-   1. Open the JSON Structure **GA_Fulfillment_Reques_Newt**
-   2. Find the `parameters` key under `result` in the JSON
-   3. Add the key and an example value for your parameter, for example: `"name": "Test",`
-   4. Refresh the JSON Structure
-   5. Open the Import Mapping with the same name
-   6. From the **Select Elements** dialog, check the box next to the attribute you just added
-   7. Click **Map Automatically**
-8. Duplicate the **SUB_Action_Template** microflow and move it to your own module.
-9. Rename the microflow **SUB_Action_{{nameOfDialogflowAction}**, for example: SUB_Action_CreateRequest. The naming is not mandatory, but could be helpfull
-10. Modify the microflow to process the intent:
-    1. If your microflow requires parameters, use the split activity at the start of the microflow to check that those parameters are not empty.
-    2. Execute your application logic. 
-    3. Modify the **GetHTTPResponse** call to pass back a string of text to be spoken back to the user
-11. Modify the **ASU_SetupActionRegistry** to add a mapping between the intent name and the action microflow:
-    1. Add a new java action activity that calls the java action **AddActionToRegistry**
-    2. Enter the action name as a string (from 3), for example: CreateRequest
-    3. Enter the action microflow (from 8,9), for example: SUB_Action_CreateRequest
-12. Publish your changes!
+Call this intent something like: Sign me in, so it can request access to the User’ profile
 
+Make sure to fill your GAUserID attribute with the correct Google Email, since it'll to a retrieve based on that. NB: This is only need if you have user specific questions, and need to retrieve data for a specific user instead of general information.
 
+### Frequently Asked Questions
 
-### TIPS:
+Q: Halp?
 
-Make sure your parameters MATCH. otherwise you won't get your data in Mendix. It can take some trial and error.
-Start simple. Get a feel for Dialogflow and the integration before adding new response types
-Read the documentation and experiment!
-For more info, please reach out to us via the AppStore or the Mendix developer site. You could always send an email to paul.ketelaars@timeseries.com
+A: Hit me up on Slack! (or send me an email through the dev portal!
+
+Q: It's not working?
+
+A: Check to see if your mapping is correct, and check the raw response in Actions on Google
+
+Q: I don't get a User in my requests
+
+A: Google only sends user data from actual devices, or through the Actions on Google test suite, NOT the Dialogflow test suite.
+
+Q: I'm missing something in this documentation
+
+A: That could very well be, feel free to hit me up and I'll make sure it gets updated
